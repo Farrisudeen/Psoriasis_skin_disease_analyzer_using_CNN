@@ -1,0 +1,111 @@
+from flask import Flask,render_template,request,redirect,url_for
+from tensorflow.keras.preprocessing import image
+from keras.models import load_model
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+
+UPLOAD_FOLDER = 'static/file/'
+app = Flask(name)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+@app.route('/')
+def login():
+    return render_template('login.html')
+@app.route('/validate', methods=['POST', 'GET'])
+def validate():
+    if request.method == 'POST':
+        if request.form.get('uname') == 'admin' and request.form.get('upass') == '123':
+            return render_template('index.html')
+        else:
+            return render_template('login.html', msg='Invalid')
+    elif request.method == 'GET':
+        return render_template('login.html', msg='Please login')
+@app.route('/upload', methods=['POST', 'GET'])
+def upload():
+    if request.method == 'POST':
+        classes = ['Acne and Rosacea', 'Actinic Keratosis Basal Cell Carcinoma', 'Atopic Dermatitis', 'Bullous Disease', 'Cellulitis Impetigo', 'Eczema', 'Exanthems and Drug Eruptions', 'Hair Loss and Alopecia', 'Monkeypox', 'Normal']
+        diet_plans = {
+            'Actinic Keratosis Basal Cell Carcinoma': {
+                'dos': ["Focus on a diet rich in antioxidants, such as fruits, vegetables, nuts, and seeds."],
+                'donts': ["Limit processed foods and red meat."]
+            },
+            'Atopic Dermatitis': {
+                'dos': ["Opt for anti-inflammatory foods like fish, leafy greens, and berries."],
+                'donts': ["Avoid common triggers like dairy, gluten, and processed foods."]
+            },
+            'Bullous Disease': {
+                'dos': ["Consume a well-balanced diet with plenty of protein, vitamins, and minerals."],
+                'donts': ["Avoid spicy and acidic foods."]
+            },
+            'Cellulitis Impetigo': {
+                'dos': ["Eat a diet rich in vitamin C, zinc, and protein to boost your immune system.", "Stay hydrated."],
+                'donts': ["Limit processed foods."]
+            },
+            'Eczema': {
+                'dos': ["Include foods rich in omega-3 fatty acids like salmon and flaxseeds."],
+                'donts': ["Avoid common triggers like dairy, eggs, and nuts."]
+            },
+            'Exanthems and Drug Eruptions': {
+                'dos': ["Focus on a diet rich in antioxidants and vitamins to support skin health."],
+                'donts': ["Avoid foods that may exacerbate symptoms."]
+            },
+            'Monkeypox': {
+                'dos': ["Eat a balanced diet with plenty of fruits, vegetables, lean proteins, and whole grains.", "Stay hydrated."],
+                'donts': ["Avoid salty foods such as chips, instant packaged foods, ready soups."]
+            },
+            'Normal':{
+                'message': "You have good healthy skin!"
+            }
+        }
+        file1 = request.files['filename']
+        imgfile = os.path.join(app.config['UPLOAD_FOLDER'], file1.filename)
+       
+        os.makedirs(os.path.dirname(imgfile), exist_ok=True)
+      
+        file1.save(imgfile)
+        model = load_model('model_inception.h5')
+        img_ = image.load_img(imgfile, target_size=(224, 224, 3))
+        img_array = image.img_to_array(img_)
+        img_processed = np.expand_dims(img_array, axis=0)
+        img_processed /= 255.
+        prediction = model.predict(img_processed)
+        index = np.argmax(prediction)
+        result = "Unknown"
+        percentage = 0.0
+
+        if index < len(classes):
+            result = str(classes[index]).title()
+            print("Predicted condition:", result)
+            print("Predicted class label:", classes[index])
+            # Retrieve the diet plan for the predicted condition
+            diet_plan = diet_plans.get(result, {"dos": [], "donts": []})
+            # Retrieve 'dos' and 'donts' from the diet plan
+            dos = diet_plan.get('dos', [])
+            donts = diet_plan.get('donts', [])
+
+
+        image_url = url_for('static', filename='file/' + file1.filename)
+        
+        # Set a flag to indicate "Normal" result
+        normal_result = (result == "Normal")
+        
+        # If the result is "Normal", set a custom message
+        if normal_result:
+            message = diet_plans['Normal']['message']
+            return render_template('prediction_result.html', msg=result, message=message, src=imgfile, view='style=display:block', view1='style=display:none')
+        
+        # For other conditions, render dos and donts as usual
+        return render_template('prediction_result.html', msg=result, dos=dos, donts=donts, src=imgfile, view='style=display:block', view1='style=display:none')
+
+    elif request.method == 'GET':
+        return render_template('index.html')
+
+@app.route('/prediction_result')
+def prediction_result():
+    result = request.args.get('result')
+    diet_plan = request.args.get('diet_plan')
+    image_url = request.args.get('image_url')
+    
+    return render_template('prediction_result.html', result=result, diet_plan=diet_plan, image_url=image_url)
+if name == 'main':
+    app.run(debug=True,port=6864)
